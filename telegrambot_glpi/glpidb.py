@@ -4,10 +4,10 @@ import pymysql
 
 def db_connetion():
     # DB credentials
-    dbHost = '10.12.32.76' # 'localhost'
+    dbHost = 'IP_SERVE_DB' # 'localhost'
     dbName = 'glpi'
-    dbUser = 'glpiapiuser'
-    dbPassword = 'lol770905'
+    dbUser = 'glpiuser'
+    dbPassword = 'Password'
 
     # Connect to DB
     return pymysql.connect(

@@ -10,8 +10,8 @@ import glpiapi
 
 
 # bot token from @BotFather
-bot_token = '1489373122:AAHEDbrz8kRS1Y_5XXtrVMtTeh_NK7X8Dhw'
-url_glpi = 'https://support.acticomp.ru/apirest.php/'
+bot_token = '148967522:SKLJFrz8kRS1Y_5XXtrVMtTeh_NK7X8Dhw'
+url_glpi = 'https://glpi.mydomen.ru/apirest.php/'
 
 # relative path for files
 file_path_dl = 'images'
