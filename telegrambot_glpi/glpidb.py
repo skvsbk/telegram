@@ -88,13 +88,3 @@ def update_doc_item(documents_id, items_id, user_id):
 
 if __name__ == '__main__':
     print('glpidb module')
-    connection = db_connetion()
-    max_id = get_max_id(connection)
-    print(max_id)
-    mobile = '+79110872875'
-    user = get_user_credentials(mobile)
-    print(user['id'])
-    print(user['user_token'])
-    print(user['firstname'])
-    #
-    # update_doc_item(max_id+1, 678, 1574, user['id'])
