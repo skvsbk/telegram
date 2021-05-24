@@ -57,7 +57,6 @@ def read_contact_phone(message):
         user_dict[message.chat.id] = glpiapi.User(id=user_credentials['id'], token=user_credentials['user_token'])
         # Get user session
         glpi_dict[message.chat.id] = glpiapi.GLPI(url_glpi, user=user_dict[message.chat.id])
-        user_dict[message.chat.id].session = glpi_dict[message.chat.id].get_session_token()
         # Create empty ticket
         ticket_dict[message.chat.id] = glpiapi.Ticket()
 
@@ -85,7 +84,7 @@ def read_contact_phone(message):
 def item(message):
     if message.chat.type == 'private':
         try:
-            if user_dict[message.chat.id].session != None:
+            if glpi_dict[message.chat.id].session != None:
                 if message.content_type == 'text':
                     if ticket_dict[message.chat.id].name == '':
                         ticket_dict[message.chat.id].name = message.html_text
@@ -123,7 +122,6 @@ def download_file(file_info, message):
         new_file.write(file.content)
     # add filename to class
     ticket_dict[message.chat.id].attachment.append(filename)
-    # ticket_dict[message.chat.id].print_ticket()
 
 # Pushing inline keyboard
 @bot.callback_query_handler(func=lambda call: True)
@@ -138,8 +136,6 @@ def callback_inline(call):
                 markup.add(item1, item2, item3)
                 bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                       text="Выберите категорию", reply_markup=markup)
-                # print(call.message.chat.id)
-                #call.from_user.id
             elif call.data == 'continue':
                 bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                       text="Опишите проблему или сделайте фото...", reply_markup=None)
@@ -157,8 +153,6 @@ def callback_inline(call):
                 if ticket_id != None:
                     bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                           text="Заявка №" + str(ticket_id) + " успешно оформлена", reply_markup=None)
-                    # bot.send_message(call.message.chat.id, "https://support.acticomp.ru/front/ticket.form.php?id=" +
-                    #                  str(ticket_id), parse_mode='html', reply_markup=None)
                 else:
                     bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                           text="Что-то пошло не так. Обратитесь в ИТ-отдел.", reply_markup=None)
@@ -187,13 +181,7 @@ def callback_inline(call):
                                       text="Категория: Тех.поддержка", reply_markup=None)
                 bot.send_message(call.message.chat.id, "Опишите проблему или сделайте фото", reply_markup=None)
             else:
-                # bot.send_message(call.message.chat.id, "Не знаю что ответить =(...")
-                a=1
-
-            # show alert
-            # bot.answer_callback_query(callback_query_id=call.id, show_alert=False,
-            #                           text="ЭТО ТЕСТОВОЕ УВЕДОМЛЕНИЕ!!11")
-        # ticket_dict[call.message.chat.id].print_ticket()
+                pass
     except Exception as e:
         print(repr(e))
 

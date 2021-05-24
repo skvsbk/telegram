@@ -4,12 +4,12 @@ import json
 
 
 class User:
-    def __init__(self, id=None, token=None, session=None):
+    def __init__(self, id=None, token=None):
         self.id  = id
         self.token = token
-        self.session = session
+
     def print_user(self):
-        print(f'user_id: {self.id}; user_token: {self.token}; user_session: {self.session}')
+        print(f'user_id: {self.id}; user_token: {self.token}')
 
 class Ticket:
     def __init__(self, id=None, name='', content='', attachment=[]):
@@ -26,6 +26,12 @@ class GLPI:
         self.url = url
         self.user  = user
         self.ticket = ticket
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": "user_token " + self.user.token
+        }
+        response = requests.get(self.url+"initSession", headers=headers)
+        self.session = json.loads(response.text).get('session_token')
 
     def __del__(self):
         '''
@@ -33,23 +39,11 @@ class GLPI:
         '''
         headers = {
             'Content-Type': 'application/json',
-            'Session-Token': self.user.session,
+            'Session-Token': self.session,
         }
         requests.get(self.url+"killSession", headers=headers)
 
-    def get_session_token(self):
-        '''
-        :return: user session token for uses in other API endpoints
-        '''
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": "user_token " + self.user.token
-        }
-        response = requests.get(self.url+"initSession", headers=headers)
-        res = json.loads(response.text)
-        return res.get('session_token')
-
-    def create_ticket(self):    #, url, user_token, session_token, name, content):
+    def create_ticket(self):
         '''
         :return: ticket_id
         '''
@@ -57,7 +51,7 @@ class GLPI:
             headers = {
                 "Content-Type": "application/json",
                 "Authorization": "user_token " + self.user.token,
-                "Session-Token": self.user.session
+                "Session-Token": self.session
             }
             if self.ticket.content == '':
                 self.ticket.content = self.ticket.name
@@ -72,13 +66,13 @@ class GLPI:
 
         return self.ticket.id
 
-    def upload_doc(self, file_path, filename):   # (url, session_token, ticket_id, filename):
+    def upload_doc(self, file_path, filename):
         '''
         :param file_path: path to downloaded files
         :param filename: from ticket.attachment
         :return: noting
         '''
-        headers={'Session-Token': self.user.session,}
+        headers={'Session-Token': self.session,}
         files = {
             'uploadManifest': (None, '{"input": {"name": "Документ заявки '+str(self.ticket.id)+' (tb)", "_filename": ["'+filename+'"]}}',
                                'application/json'),
@@ -96,13 +90,9 @@ class GLPI:
 if __name__ == '__main__':
     print('glpiapi module')
 
-    user = User(id='325', token='***************')
+    user = User(id='325', token='PG2HbajQdHVEOSXq9ag1uVKPFcwxLGEKPOoXf7Jd')
 
-    glpiAPI = GLPI(url='https://**********.**********.ru/apirest.php/', user=user)
-
-    user_session = glpiAPI.get_session_token()
-    print(user_session)
-    user.session = user_session
+    glpiAPI = GLPI(url='https://support.acticomp.ru/apirest.php/', user=user)
 
     ticket = Ticket(name='test', content='test test')
 
