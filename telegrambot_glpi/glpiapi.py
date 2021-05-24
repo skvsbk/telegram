@@ -96,9 +96,9 @@ class GLPI:
 if __name__ == '__main__':
     print('glpiapi module')
 
-    user = User(id='325', token='PG2HbajQdHVEOSXq9ag1uVKPFcwxLGEKPOoXf7Jd')
+    user = User(id='325', token='***************')
 
-    glpiAPI = GLPI(url='https://support.acticomp.ru/apirest.php/', user=user)
+    glpiAPI = GLPI(url='https://**********.**********.ru/apirest.php/', user=user)
 
     user_session = glpiAPI.get_session_token()
     print(user_session)
