@@ -31,7 +31,7 @@ def get_user_credentials(mobile):
     user_dict = dict()
     try:
         with connection.cursor() as cursor:
-            query = "SELECT * FROM glpi_users WHERE mobile = '" + mobile + "'"
+            query = "SELECT id, api_token, firstname FROM glpi_users WHERE mobile = '" + mobile + "'"
             cursor.execute(query)
             for row in cursor:
                 user_dict['user_token'] = row['api_token']
@@ -91,9 +91,10 @@ if __name__ == '__main__':
     connection = db_connetion()
     max_id = get_max_id(connection)
     print(max_id)
-    # mobile = '+79110000000'
-    # user = get_user_token(mobile)
-    # print(user['id'])
-    # print(user['api_token'])
+    mobile = '+79110872875'
+    user = get_user_credentials(mobile)
+    print(user['id'])
+    print(user['user_token'])
+    print(user['firstname'])
     #
     # update_doc_item(max_id+1, 678, 1574, user['id'])
