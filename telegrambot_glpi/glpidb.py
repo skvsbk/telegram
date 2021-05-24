@@ -1,13 +1,18 @@
+import os
 import datetime
 import pymysql
+from dotenv import load_dotenv
 
+
+# Credentials
+load_dotenv('.env')
 
 def db_connetion():
     # DB credentials
-    dbHost = 'IP_SERVE_DB' # 'localhost'
-    dbName = 'glpi'
-    dbUser = 'glpiuser'
-    dbPassword = 'Password'
+    dbHost = os.getenv('dbHost')
+    dbName = os.getenv('dbName')
+    dbUser = os.getenv('dbUser')
+    dbPassword = os.getenv('dbPassword')
 
     # Connect to DB
     return pymysql.connect(

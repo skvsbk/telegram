@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import os
 import random
 import requests
@@ -7,30 +5,35 @@ import telebot
 from telebot import types
 import glpidb
 import glpiapi
+from dotenv import load_dotenv
 
+# Credentials
+load_dotenv('.env')
 
 # bot token from @BotFather
-bot_token = '148967522:SKLJFrz8kRS1Y_5XXtrVMtTeh_NK7X8Dhw'
-url_glpi = 'https://glpi.mydomen.ru/apirest.php/'
+bot_token = os.getenv('token')
+url_glpi = os.getenv('urlGLPI')
 
 # relative path for files
-file_path_dl = 'images'
+file_path_dl = os.getenv('filePath')
 
-auth_dict = dict()
+# Dicts for each message.chat.id (for each user)
+user_dict = dict()
 ticket_dict = dict()
+glpi_dict = dict()
 
 bot = telebot.TeleBot(bot_token)
-
 
 @bot.message_handler(commands=['stop'])
 def exitmsg(message):
     bot.send_message(message.chat.id, "До новых встреч")
     try:
-        for filename in ticket_dict[message.chat.id].ticket_attachment:
+        for filename in ticket_dict[message.chat.id].attachment:
             if os.path.exists(file_path_dl+'/'+filename):
                 os.remove(file_path_dl+'/'+filename)
+        user_dict.pop(message.chat.id)
+        glpi_dict.pop(message.chat.id)
         ticket_dict.pop(message.chat.id)
-        auth_dict.pop(message.chat.id)
     except:
         print('Ошибка очистки словарей')
 
@@ -42,7 +45,6 @@ def welcome(message):
     reply_markup.add(item)
     bot.send_message(chat_id=message.chat.id, text=f"Необходимо авторизоваться.\nНажмите <b>Авторизация</b>",
                      parse_mode='html', reply_markup=reply_markup)
-    auth_dict[message.chat.id] = False
 
 @bot.message_handler(content_types=['contact'])
 def read_contact_phone(message):
@@ -52,12 +54,16 @@ def read_contact_phone(message):
     # Get user's credentials and continue if phone number contains in DB, else send /stop command
     user_credentials = glpidb.get_user_credentials(phone)   # dictionary 'user_token' 'id' 'firstname'
     if len(user_credentials) != 0 and len(user_credentials['user_token']) != 0:
-        auth_dict[message.chat.id] = True
+        user_dict[message.chat.id] = glpiapi.User(id=user_credentials['id'], token=user_credentials['user_token'])
+        # Get user session
+        glpi_dict[message.chat.id] = glpiapi.GLPI(url_glpi, user=user_dict[message.chat.id])
+        user_dict[message.chat.id].session = glpi_dict[message.chat.id].get_session_token()
+        # Create empty ticket
         ticket_dict[message.chat.id] = glpiapi.Ticket()
-        ticket_dict[message.chat.id].url = url_glpi
-        ticket_dict[message.chat.id].user_id = user_credentials['id']
-        ticket_dict[message.chat.id].user_token = user_credentials['user_token']
 
+        # for test
+        user_dict[message.chat.id].print_user()
+        # / for test
         item_remove = types.ReplyKeyboardRemove()
         bot.send_message(message.chat.id,  f"Добро пожаловать, {user_credentials['firstname']}!",
                          reply_markup=item_remove)
@@ -79,12 +85,12 @@ def read_contact_phone(message):
 def item(message):
     if message.chat.type == 'private':
         try:
-            if auth_dict[message.chat.id]:
+            if user_dict[message.chat.id].session != None:
                 if message.content_type == 'text':
-                    if ticket_dict[message.chat.id].ticket_name == '':
-                        ticket_dict[message.chat.id].ticket_name = message.html_text
+                    if ticket_dict[message.chat.id].name == '':
+                        ticket_dict[message.chat.id].name = message.html_text
                     else:
-                        ticket_dict[message.chat.id].ticket_content += message.html_text + ' '
+                        ticket_dict[message.chat.id].content += message.html_text + ' '
                         # ticket_dict[message.chat.id].print_ticket()
                 elif message.content_type == 'document':
                     file_info = bot.get_file(message.document.file_id)
@@ -116,7 +122,7 @@ def download_file(file_info, message):
     with open(file_path_dl+'/'+filename, 'wb') as new_file:
         new_file.write(file.content)
     # add filename to class
-    ticket_dict[message.chat.id].ticket_attachment.append(filename)
+    ticket_dict[message.chat.id].attachment.append(filename)
     # ticket_dict[message.chat.id].print_ticket()
 
 # Pushing inline keyboard
@@ -138,15 +144,16 @@ def callback_inline(call):
                 bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                       text="Опишите проблему или сделайте фото...", reply_markup=None)
             elif call.data == 'send':
-                # create ticket
-                ticket_id = ticket_dict[call.message.chat.id].create_ticket()
+                # send ticket
+                glpi_dict[call.message.chat.id].ticket = ticket_dict[call.message.chat.id]
+                ticket_id = glpi_dict[call.message.chat.id].create_ticket()
+                ticket_dict[call.message.chat.id].id = ticket_id
                 # upload files/hotos to glpi
-                for filename in ticket_dict[call.message.chat.id].ticket_attachment:
-                    doc_id = ticket_dict[call.message.chat.id].upload_doc(file_path_dl, filename)
+                for filename in ticket_dict[call.message.chat.id].attachment:
+                    doc_id = glpi_dict[call.message.chat.id].upload_doc(file_path_dl, filename)
                     if doc_id != None:
                         # update table glpi_documents_items
-                        glpidb.update_doc_item(doc_id, ticket_dict[call.message.chat.id].ticket_id,
-                                               ticket_dict[call.message.chat.id].user_id)
+                        glpidb.update_doc_item(doc_id, ticket_id, user_dict[call.message.chat.id].id)
                 if ticket_id != None:
                     bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                           text="Заявка №" + str(ticket_id) + " успешно оформлена", reply_markup=None)
@@ -155,6 +162,10 @@ def callback_inline(call):
                 else:
                     bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                           text="Что-то пошло не так. Обратитесь в ИТ-отдел.", reply_markup=None)
+                # for test
+                ticket_dict[call.message.chat.id].print_ticket()
+                # / for test
+
                 exitmsg(call.message)
             elif call.data == 'cancel' or call.data == 'exitbot':
                 bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
