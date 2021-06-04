@@ -91,24 +91,3 @@ class GLPI:
 
 if __name__ == '__main__':
     print('glpiapi module')
-
-    user = User(id='325', token='PG2HbajQdHVEOSXq9ag1uVKPFcwxLGEKPOoXf7Jd')
-
-    glpiAPI = GLPI(url='https://support.acticomp.ru/apirest.php/', user=user)
-
-    ticket = Ticket(name='test', content='test test')
-
-    glpiAPI.ticket = ticket
-    ticket_id = glpiAPI.create_ticket()
-    ticket.id = ticket_id
-    print(ticket_id)
-
-    ticket.attachment.append('2.jpg')
-    glpiAPI.upload_doc(file_path='images', filename='2.jpg')
-    user.print_user()
-    ticket.print_ticket()
-
-    # kill objects
-    glpiAPI = ''
-    user = ''
-    ticket = ''
