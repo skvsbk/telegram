@@ -1,25 +1,31 @@
 import os
 import datetime
+import logging
 import pymysql
 from dotenv import load_dotenv
 
+
+# logging
+logging.basicConfig(level=logging.WARNING, filename='glpibot.log', format='%(asctime)s %(name)s %(levelname)s:%(message)s')
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 # Credentials
 load_dotenv('.env')
 
 def db_connetion():
     # DB credentials
-    dbHost = os.getenv('dbHost')
-    dbName = os.getenv('dbName')
-    dbUser = os.getenv('dbUser')
-    dbPassword = os.getenv('dbPassword')
+    DB_HOST = os.getenv('DB_HOST')
+    DB_NAME = os.getenv('DB_NAME')
+    DB_USER = os.getenv('DB_USER')
+    DB_PASS = os.getenv('DB_PASS')
 
     # Connect to DB
     return pymysql.connect(
-        host=dbHost,
-        user=dbUser,
-        password=dbPassword,
-        db=dbName,
+        host=DB_HOST,
+        user=DB_USER,
+        password=DB_PASS,
+        db=DB_NAME,
         cursorclass=pymysql.cursors.DictCursor)
 
 def get_user_credentials(mobile):
@@ -37,7 +43,10 @@ def get_user_credentials(mobile):
                 user_dict['user_token'] = row['api_token']
                 user_dict['id'] = row['id']
                 user_dict['firstname'] = row['firstname']
+    except:
+        logger.warning('get_user_credentials(mobile) - error getting user_id for %s', str(mobile))
     finally:
+        logger.info('the function get_user_credentials(mobile) is done for the mobile %s', str(mobile))
         connection.close()
 
     return user_dict
@@ -53,7 +62,10 @@ def get_max_id(connection):
             cursor.execute(query)
             for row in cursor:
                 max_id = row['MAX(id)']
+    except:
+        logger.warning('get_max_id(connection) - error getting max_id')
     finally:
+        logger.info('the function get_max_id(connection) is done')
         connection.close()
 
     return max_id
@@ -83,8 +95,21 @@ def update_doc_item(documents_id, items_id, user_id):
             query = f"INSERT INTO glpi_documents_items({columns}) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
             cursor.executemany(query, values)
             connection.commit()
+    except:
+        logger.warning('update_doc_item(connection) - error updating item_id %s', items_id)
     finally:
+        logger.info('the update_doc_item(connection) is done for item_id %s', items_id)
         connection.close()
 
 if __name__ == '__main__':
     print('glpidb module')
+    connection = db_connetion()
+    max_id = get_max_id(connection)
+    print(max_id)
+    mobile = '+79110872875'
+    user = get_user_credentials(mobile)
+    print(user['id'])
+    print(user['user_token'])
+    print(user['firstname'])
+    #
+    # update_doc_item(max_id+1, 678, 1574, user['id'])

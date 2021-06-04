@@ -12,17 +12,18 @@ class User:
         print(f'user_id: {self.id}; user_token: {self.token}')
 
 class Ticket:
-    def __init__(self, id=None, name='', content='', attachment=[]):
+    def __init__(self, id=None, name='', content='', attachment=[], new=False):
         self.id = id
         self.name = name
         self.content = content
         self.attachment = attachment
+        self.new = new
 
     def print_ticket(self):
         print(f'ticket_id: {self.id}; ticket_name: {self.name}; ticket_content: {self.content}; ticket_attachment: {self.attachment}')
 
 class GLPI:
-    def __init__(self, url = None, user=None, ticket=None):
+    def __init__(self, url=None, user=None, ticket=None):
         self.url = url
         self.user  = user
         self.ticket = ticket
@@ -48,7 +49,7 @@ class GLPI:
         '''
         :return: ticket_id
         '''
-        if self.ticket.id == None:
+        if self.ticket.id is None:
             headers = {
                 "Content-Type": "application/json",
                 "Authorization": "user_token " + self.user.token,
@@ -91,4 +92,23 @@ class GLPI:
 if __name__ == '__main__':
     print('glpiapi module')
 
-       ticket = ''
+    user = User(id='325', token='PG2HbajQdHVEOSXq9ag1uVKPFcwxLGEKPOoXf7Jd')
+
+    glpiAPI = GLPI(url='https://support.acticomp.ru/apirest.php/', user=user)
+
+    ticket = Ticket(name='test', content='test test')
+
+    glpiAPI.ticket = ticket
+    ticket_id = glpiAPI.create_ticket()
+    ticket.id = ticket_id
+    print(ticket_id)
+
+    ticket.attachment.append('2.jpg')
+    glpiAPI.upload_doc(file_path='images', filename='2.jpg')
+    user.print_user()
+    ticket.print_ticket()
+
+    # kill objects
+    glpiAPI = ''
+    user = ''
+    ticket = ''
