@@ -154,40 +154,39 @@ def read_contact_phone(message):
 def get_data(message):
     if message.chat.type == 'private':
         try:
-            if glpi_dict[message.chat.id].session is not None:
-                if ticket_dict[message.chat.id].isnew:
-                    if message.content_type == 'text':
-                        set_ticket_name_or_content(message, message.html_text)
-                    elif message.content_type == 'document':
-                        file_info = bot.get_file(message.document.file_id)
-                        download_file(file_info, message)
-                    elif message.content_type == 'photo':
-                        if message.html_caption is not None:
-                            set_ticket_name_or_content(message, message.html_caption)
-                        file_info = bot.get_file(message.photo[-1].file_id)
-                        download_file(file_info, message)
-                    elif message.content_type == 'video':
-                        if message.html_caption is not None:
-                            set_ticket_name_or_content(message, message.html_caption)
-                        file_info = bot.get_file(message.video.file_id)
-                        download_file(file_info, message)
-                    else:
-                        pass
-                    # Delete message with inline keybaord
-                    delmsgid = msgid_dict[message.chat.id].pop()
-                    bot.delete_message(chat_id=message.chat.id, message_id=delmsgid)
-                    markup = make_keyboard_inlain(3, key_continue="Дополнить", key_send="Отправить в ИТ",
-                                                  key_cancel="Отменить")
-                    send_id = bot.send_message(message.chat.id,"Вы можете дополнить заявку фото, видео или " + \
-                                               "текстовым сообщением либо завершить", parse_mode='html',
-                                               reply_markup=markup)
-                    msgid_dict[message.chat.id].append(send_id.id)
+            if ticket_dict[message.chat.id].isnew:
+                if message.content_type == 'text':
+                    set_ticket_name_or_content(message, message.html_text)
+                elif message.content_type == 'document':
+                    file_info = bot.get_file(message.document.file_id)
+                    download_file(file_info, message)
+                elif message.content_type == 'photo':
+                    if message.html_caption is not None:
+                        set_ticket_name_or_content(message, message.html_caption)
+                    file_info = bot.get_file(message.photo[-1].file_id)
+                    download_file(file_info, message)
+                elif message.content_type == 'video':
+                    if message.html_caption is not None:
+                        set_ticket_name_or_content(message, message.html_caption)
+                    file_info = bot.get_file(message.video.file_id)
+                    download_file(file_info, message)
                 else:
-                    delmsgid = msgid_dict[message.chat.id].pop()
-                    bot.delete_message(chat_id=message.chat.id, message_id=delmsgid)
-                    bot.send_message(message.chat.id,"Используйте, пожалуйста, кнопки.", parse_mode='html', 
-                                     reply_markup=None)
-                    select_title(message)
+                    pass
+                # Delete message with inline keybaord
+                delmsgid = msgid_dict[message.chat.id].pop()
+                bot.delete_message(chat_id=message.chat.id, message_id=delmsgid)
+                markup = make_keyboard_inlain(3, key_continue="Дополнить", key_send="Отправить в ИТ",
+                                              key_cancel="Отменить")
+                send_id = bot.send_message(message.chat.id,"Вы можете дополнить заявку фото, видео или " + \
+                                           "текстовым сообщением либо завершить", parse_mode='html',
+                                           reply_markup=markup)
+                msgid_dict[message.chat.id].append(send_id.id)
+            else:
+                delmsgid = msgid_dict[message.chat.id].pop()
+                bot.delete_message(chat_id=message.chat.id, message_id=delmsgid)
+                bot.send_message(message.chat.id,"Используйте, пожалуйста, кнопки.", parse_mode='html',
+                                 reply_markup=None)
+                select_title(message)
         except Exception as err:
             bot.send_message(message.chat.id, "Вероятно Вы не авторизованы. Введите /start",
                              parse_mode='html', reply_markup=None)
