@@ -12,12 +12,12 @@ class User:
         print(f'user_id: {self.id}; user_token: {self.token}')
 
 class Ticket:
-    def __init__(self, id=None, name='', content='', attachment=[], new=False):
+    def __init__(self, id=None, name='', content='', attachment=[], isnew=False):
         self.id = id
         self.name = name
         self.content = content
         self.attachment = attachment
-        self.new = new
+        self.isnew = isnew
 
     def print_ticket(self):
         print(f'ticket_id: {self.id}; ticket_name: {self.name}; ticket_content: {self.content}; ticket_attachment: {self.attachment}')
@@ -91,3 +91,4 @@ class GLPI:
 
 if __name__ == '__main__':
     print('glpiapi module')
+

@@ -1,5 +1,6 @@
 import os
 import random
+import time
 import requests
 import logging
 import telebot
@@ -24,27 +25,79 @@ URL_GLPI = os.getenv('URL_GLPI')
 # relative path for files
 FILE_PATH = os.getenv('FILE_PATH')
 
+bot = telebot.TeleBot(BOT_TOKEN)
+
 # Dicts for each message.chat.id (for each user)
 user_dict = dict()
 ticket_dict = dict()
 glpi_dict = dict()
 msgid_dict = {"": []}
 
-bot = telebot.TeleBot(BOT_TOKEN)
+# Keyboards
+def make_keyboard_inlain(row_width, **bottons):
+    '''
+    Make inline keyboard
+    :param row_width: number of row appears
+    :param bottons: callback_data="botton_name"
+    :return: InlineKeyboardMarkup
+    '''
+    markup = types.InlineKeyboardMarkup(row_width=row_width)
+    l = []
+    for callback_data, botton_name in bottons.items():
+        l.append(types.InlineKeyboardButton(botton_name, callback_data=callback_data))
+    args = (i for i in l)
+    return markup.add(*args)
 
-def start_menu(message):
-    markup = types.InlineKeyboardMarkup(row_width=3)
-    item1 = types.InlineKeyboardButton("Выход", callback_data='key_exitbot')
-    item2 = types.InlineKeyboardButton("Заявка в ИТ", callback_data='key_newitem')
-    item3 = types.InlineKeyboardButton("Инструкции", callback_data='key_instructions')
-
-    markup.add(item1, item2, item3)
+def select_title(message):
+    '''
+    Select title and get message.chat.id
+    '''
+    markup = make_keyboard_inlain(3, key_exitbot="Выход", key_newitem="Заявка в ИТ", key_instructions="Инструкции")
     send_id = bot.send_message(message.chat.id, "Выберите тему обращения:", reply_markup=markup)
     msgid_dict[message.chat.id].append(send_id.id)
 
+def set_ticket_name_or_content(message, html_text):
+    '''
+    Setting ticket name or content depending on ticket name
+    '''
+    if ticket_dict[message.chat.id].name == '':
+        ticket_dict[message.chat.id].name = html_text
+    else:
+        ticket_dict[message.chat.id].content += html_text + ', '
+
+def download_file(file_info, message):
+    '''
+    Store file in local dir for further store in GLPI
+    '''
+    try:
+        file = requests.get('https://api.telegram.org/file/bot{0}/{1}'.format(BOT_TOKEN, file_info.file_path))
+        # random part of filename
+        file_add = str(random.randint(0, 1000))
+        # get extension from file path
+        file_ext = file_info.file_path[file_info.file_path.rfind('.') + 1:]
+        filename = f'{message.chat.id}_{file_add}.{file_ext}'
+        with open(FILE_PATH + '/' + filename, 'wb') as new_file:
+            new_file.write(file.content)
+        # add filename to class
+        ticket_dict[message.chat.id].attachment.append(filename)
+    except Exception as err:
+        logger.warning('download_file(%s) - some errors: %s', str(message.chat.id), repr(err))
+    finally:
+        logger.info("the function download_file(message) is done for the id %s", str(message.chat.id))
+        
+def set_ticket_name_from_key(chat_id, message_id, name):
+    '''
+    Adding "(из Telegram)" to ticket_name and show message with the selected category
+    '''
+    ticket_dict[chat_id].ticket_name = f'{name} (из Telegram)'
+    bot.edit_message_text(chat_id=chat_id, message_id=message_id,
+                          text=f'Категория: {name}', reply_markup=None)
+    bot.send_message(chat_id, "Опишите проблему, сделайте фото или видео", reply_markup=None)
+
 @bot.message_handler(commands=['stop'])
-def exitmsg(message):
+def execute_on_exit(message):
     bot.send_message(message.chat.id, "До новых встреч")
+    time.sleep(10)
     try:
         for filename in ticket_dict[message.chat.id].attachment:
             if os.path.exists(FILE_PATH + '/' + filename):
@@ -54,18 +107,20 @@ def exitmsg(message):
         ticket_dict.pop(message.chat.id)
         msgid_dict.pop(message.chat.id)
     except:
-        logger.warning('exitmsg(%s) - error cleaning dictionaries', str(message.chat.id))
+        logger.warning('execute_on_exit(%s) - error cleaning dictionaries', str(message.chat.id))
     finally:
-        logger.info('the function exitmsg(message) is done for the id %s', str(message.chat.id))
+        logger.info('the function execute_on_exit(message) is done for the id %s', str(message.chat.id))
 
 @bot.message_handler(commands=['start'])
 def welcome(message):
     # Registration
-    reply_markup = types.ReplyKeyboardMarkup(row_width=3)
-    item = types.KeyboardButton("Отправить номер", request_contact=True)
-    reply_markup.add(item)
-    bot.send_message(chat_id=message.chat.id, text=f"Для авторизации необходим номер телефона.\nНажмите <b>Отправить номер</b>\n\nОтправляя свой номер телефона Вы даете согласие на обработку персональных данных (ФИО, номер телефона) в целях работы с информационной системой",
-                     parse_mode='html', reply_markup=reply_markup)
+    keyboard_send_phone = types.ReplyKeyboardMarkup(row_width=3)
+    botton_auth = types.KeyboardButton("Отправить номер", request_contact=True)
+    keyboard_send_phone.add(botton_auth)
+    bot.send_message(chat_id=message.chat.id, text=f"Для авторизации необходим номер телефона.\nНажмите <b>" + \
+                    "Отправить номер</b>\n\nОтправляя свой номер телефона Вы даете согласие на обработку " + \
+                    "персональных данных (ФИО, номер телефона) в целях работы с информационной системой",
+                     parse_mode='html', reply_markup=keyboard_send_phone)
 
 @bot.message_handler(content_types=['contact'])
 def read_contact_phone(message):
@@ -73,8 +128,8 @@ def read_contact_phone(message):
     if phone[0] != '+':
         phone = '+'+phone
     # Get user's credentials and continue if phone number contains in DB, else send /stop command
-    user_credentials = glpidb.get_user_credentials(phone)   # dictionary 'user_token' 'id' 'firstname'
-    if len(user_credentials) != 0 and len(user_credentials['user_token']) != 0:
+    user_credentials = glpidb.get_user_credentials(phone)   # dictionary with keys 'user_token' 'id' 'firstname'
+    if user_credentials and user_credentials['user_token']:
         user_dict[message.chat.id] = glpiapi.User(id=user_credentials['id'], token=user_credentials['user_token'])
         # Get user session
         glpi_dict[message.chat.id] = glpiapi.GLPI(URL_GLPI, user=user_dict[message.chat.id])
@@ -87,75 +142,59 @@ def read_contact_phone(message):
                          reply_markup=item_remove)
         bot.send_message(message.chat.id, f"Я - бот компании Активный компонент. Со мной можно получить помощь ИТ отдела.",
                          reply_markup=None)
-        start_menu(message)
+        select_title(message)
     else:
-        bot.send_message(message.chat.id, "К сожалению мы не смоги Вас авторизовать. Обратитесь в IT-отдел.",
-                         reply_markup=None)
-        logger.warning('read_contact_phone(message) Authorisation Error for id %s and phone %s', str(message.chat.id), phone)
-        exitmsg(message)
+        bot.send_message(message.chat.id, "К сожалению мы не смоги Вас авторизовать. Заполните в системе поля " + \
+                         "Мобильный телефон и Токен API или обратитесь в IT-отдел.", reply_markup=None)
+        logger.warning('read_contact_phone(message) Authorisation Error for id %s and phone %s',
+                       str(message.chat.id), phone)
+        execute_on_exit(message)
 
-@bot.message_handler(content_types=['text', 'photo', 'document'])
-def item(message):
+@bot.message_handler(content_types=['text', 'photo', 'video', 'document'])
+def get_data(message):
     if message.chat.type == 'private':
         try:
             if glpi_dict[message.chat.id].session is not None:
-                if ticket_dict[message.chat.id].new:
+                if ticket_dict[message.chat.id].isnew:
                     if message.content_type == 'text':
-                        if ticket_dict[message.chat.id].name == '':
-                            ticket_dict[message.chat.id].name = message.html_text
-                        else:
-                            ticket_dict[message.chat.id].content += message.html_text + ' '
-                            # ticket_dict[message.chat.id].print_ticket()
+                        set_ticket_name_or_content(message, message.html_text)
                     elif message.content_type == 'document':
                         file_info = bot.get_file(message.document.file_id)
                         download_file(file_info, message)
                     elif message.content_type == 'photo':
+                        if message.html_caption is not None:
+                            set_ticket_name_or_content(message, message.html_caption)
                         file_info = bot.get_file(message.photo[-1].file_id)
+                        download_file(file_info, message)
+                    elif message.content_type == 'video':
+                        if message.html_caption is not None:
+                            set_ticket_name_or_content(message, message.html_caption)
+                        file_info = bot.get_file(message.video.file_id)
                         download_file(file_info, message)
                     else:
                         pass
-                    markup = types.InlineKeyboardMarkup(row_width=3)
-                    item1 = types.InlineKeyboardButton("Дополнить", callback_data='key_continue')
-                    item2 = types.InlineKeyboardButton("Отправить", callback_data='key_send')
-                    item3 = types.InlineKeyboardButton("Отменить", callback_data='key_cancel')
-                    markup.add(item3, item2, item1)
                     # Delete message with inline keybaord
                     delmsgid = msgid_dict[message.chat.id].pop()
                     bot.delete_message(chat_id=message.chat.id, message_id=delmsgid)
-                    send_id = bot.send_message(message.chat.id,"Вы можете дополнить заявку фото или текстовым сообщением либо завершить",
-                                     parse_mode='html', reply_markup=markup)
+                    markup = make_keyboard_inlain(3, key_continue="Дополнить", key_send="Отправить в ИТ",
+                                                  key_cancel="Отменить")
+                    send_id = bot.send_message(message.chat.id,"Вы можете дополнить заявку фото, видео или " + \
+                                               "текстовым сообщением либо завершить", parse_mode='html',
+                                               reply_markup=markup)
                     msgid_dict[message.chat.id].append(send_id.id)
                 else:
                     delmsgid = msgid_dict[message.chat.id].pop()
                     bot.delete_message(chat_id=message.chat.id, message_id=delmsgid)
-                    bot.send_message(message.chat.id,"Используйте, пожалуйста, кнопки.",
-                                     parse_mode='html', reply_markup=None)
-                    start_menu(message)
-        except Exception as e:
-            # print(repr(e))
+                    bot.send_message(message.chat.id,"Используйте, пожалуйста, кнопки.", parse_mode='html', 
+                                     reply_markup=None)
+                    select_title(message)
+        except Exception as err:
             bot.send_message(message.chat.id, "Вероятно Вы не авторизованы. Введите /start",
                              parse_mode='html', reply_markup=None)
-            logger.warning('item(%s) - some errors', str(message.chat.id))
-            exitmsg(message)
+            logger.warning('get_data(%s) - some errors: %s', str(message.chat.id), repr(err))
+            execute_on_exit(message)
         finally:
-            logger.info("the function item(message) is done for the id %s", str(message.chat.id))
-
-def download_file(file_info, message):
-    try:
-        file = requests.get('https://api.telegram.org/file/bot{0}/{1}'.format(bot_token, file_info.file_path))
-        # random part of filename
-        file_add = str(random.randint(0, 1000))
-        # get extention from file path
-        file_ext = file_info.file_path[file_info.file_path.rfind('.') + 1:]
-        filename = f'{message.chat.id}_{file_add}.{file_ext}'
-        with open(FILE_PATH + '/' + filename, 'wb') as new_file:
-            new_file.write(file.content)
-        # add filename to class
-        ticket_dict[message.chat.id].attachment.append(filename)
-    except:
-        logger.warning('item(%s) - some errors', str(message.chat.id))
-    finally:
-        logger.info("the function item(message) is done for the id %s", str(message.chat.id))
+            logger.info("the function get_data(message) is done for the id %s", str(message.chat.id))
 
 # Pushing inline keyboard
 @bot.callback_query_handler(func=lambda call: True)
@@ -163,51 +202,43 @@ def callback_inline(call):
     try:
         if call.message:
             if call.data == 'key_newitem':
-                ticket_dict[call.message.chat.id].new = True
-                markup = types.InlineKeyboardMarkup(row_width=2)
-                item1 = types.InlineKeyboardButton("1С", callback_data='key_1c')
-                item2 = types.InlineKeyboardButton("Оргтехника", callback_data='key_office')
-                item3 = types.InlineKeyboardButton("Тех.поддержка", callback_data='key_support')
-                markup.add(item1, item2, item3)
+                ticket_dict[call.message.chat.id].isnew = True
+                markup = make_keyboard_inlain(2, key_1c="1С", key_office="Оргтехника в ИТ", key_support="поддержка")
                 send_id = bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                      text="Выберите категорию", reply_markup=markup)
+                                      text="Выберите категорию:", reply_markup=markup)
                 msgid_dict[call.message.chat.id].append(send_id.id)
             if call.data == 'key_instructions':
-                markup = types.InlineKeyboardMarkup(row_width=2)
-                item1 = types.InlineKeyboardButton("Видеосвязь", callback_data='key_VCC')
-                item2 = types.InlineKeyboardButton("Система заявок", callback_data='key_url_support')
-                item3 = types.InlineKeyboardButton("Пароль Wi-Fi", callback_data='key_guest_wifi')
-                item4 = types.InlineKeyboardButton("Другие инструкции", callback_data='key_url_docs')
-                markup.add(item3, item1, item2, item4)
+                markup = make_keyboard_inlain(3, key_guest_wifi="Пароль", key_VCC="Видеосвязь в ИТ",
+                                              key_url_support="Система", key_url_docs="Другие инструкции")
                 bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                      text="Выберите инструкцию", reply_markup=markup)
+                                      text="Выберите инструкцию:", reply_markup=markup)
             if call.data == 'key_guest_wifi':
                 bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                      text=f"Имя WiFi:  <b>{os.getenv('GUEST_SSID')}</b>\nПароль:  <b>{os.getenv('GIEST_PASS')}</b>",
+                                      text=f"Имя WiFi:  <b>{os.getenv('GUEST_SSID')}</b>\nПароль:  <b>{os.getenv('GUEST_PASS')}</b>",
                                       parse_mode='html', reply_markup=None)
-                start_menu(call.message)
+                select_title(call.message)
             if call.data == 'key_VCC':
                 bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                       text=f"Видеоконференцсвязь: \n\n{os.getenv('VCC_1')}\n\n{os.getenv('VCC_2')}\n\n{os.getenv('VCC_3')}\n\n{os.getenv('VCC_4')}\n\n{os.getenv('VCC_5')}\n",
                                       parse_mode='html', reply_markup=None)
-                start_menu(call.message)
+                select_title(call.message)
             if call.data == 'key_url_support':
                 bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                       text=f"Инструкция по входу в GLPI\n{os.getenv('URL_SUPPORT')}", reply_markup=None)
-                start_menu(call.message)
+                select_title(call.message)
             if call.data == 'key_url_docs':
                 bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                       text=f"Другие инструкции\n{os.getenv('URL_DOCS')}", reply_markup=None)
-                start_menu(call.message)
+                select_title(call.message)
             elif call.data == 'key_continue':
                 bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                      text="Опишите проблему или сделайте фото...", reply_markup=None)
+                                      text="Опишите проблему, сделайте фото или видео...", reply_markup=None)
             elif call.data == 'key_send':
                 # send ticket
                 glpi_dict[call.message.chat.id].ticket = ticket_dict[call.message.chat.id]
                 ticket_id = glpi_dict[call.message.chat.id].create_ticket()
                 ticket_dict[call.message.chat.id].id = ticket_id
-                # upload files/hotos to glpi
+                # upload files/photos/videos to glpi
                 for filename in ticket_dict[call.message.chat.id].attachment:
                     doc_id = glpi_dict[call.message.chat.id].upload_doc(FILE_PATH, filename)
                     if doc_id is not None:
@@ -218,39 +249,30 @@ def callback_inline(call):
                                           text="Заявка №" + str(ticket_id) + " успешно оформлена", reply_markup=None)
                 else:
                     bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                          text="Что-то пошло не так. Обратитесь в ИТ-отдел.", reply_markup=None)
-                exitmsg(call.message)
+                                          text="Заявка не создана. Обратитесь в ИТ-отдел.", reply_markup=None)
+                execute_on_exit(call.message)
             elif call.data == 'key_cancel' or call.data == 'key_exitbot':
                 if ticket_dict[call.message.chat.id].name == '':
                     bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
                 else:
                     bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                           text="Заявка отменена", reply_markup=None)
-                exitmsg(call.message)
+                execute_on_exit(call.message)
             elif call.data == 'key_1c':
-                ticket_dict[call.message.chat.id].ticket_name = '1С (из Telegram)'
-                bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                      text="Категория: 1С", reply_markup=None)
-                bot.send_message(call.message.chat.id, "Опишите проблему или сделайте фото", reply_markup=None)
+                set_ticket_name_from_key(call.message.chat.id, call.message.message_id, '1C')
             elif call.data == 'key_office':
-                ticket_dict[call.message.chat.id].ticket_name = 'Оргехника (из Telegram)'
-                bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                      text="Категория: Оргтехника", reply_markup=None)
-                bot.send_message(call.message.chat.id, "Опишите проблему или сделайте фото", reply_markup=None)
+                set_ticket_name_from_key(call.message.chat.id, call.message.message_id, 'Оргтехника')
             elif call.data == 'key_support':
-                ticket_dict[call.message.chat.id].ticket_name = 'Тех.поддержка (из Telegram)'
-                bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                      text="Категория: Тех.поддержка", reply_markup=None)
-                bot.send_message(call.message.chat.id, "Опишите проблему или сделайте фото", reply_markup=None)
+                set_ticket_name_from_key(call.message.chat.id, call.message.message_id, 'Тех.поддержка')
             else:
                 pass
-    except Exception as e:
-        # print(repr(e))
-        logger.warning('callback_inline(%s) - some errors', str(call.message.chat.id))
+    except Exception as err:
+        logger.warning('callback_inline(%s) - some errors: %s', str(call.message.chat.id), repr(err))
+        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                              text="Что-то пошло не так. Заявка не создана. Обратитесь в IT.", reply_markup=None)
     finally:
         logger.info("the function callback_inline(call) is done for the id %s", str(call.message.chat.id))
 
-# if __name__ == '__main__':
 # run bot
 bot.polling(none_stop=True)
 
